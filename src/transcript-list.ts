@@ -1,0 +1,257 @@
+import { Transcript } from './transcript';
+import { TranslationLanguage } from './models';
+import { CouldNotRetrieveTranscript } from './errors';
+
+/**
+ * A collection of available transcripts for a YouTube video.
+ */
+export class TranscriptList {
+  /** The YouTube video ID this transcript list belongs to */
+  public readonly videoId: string;
+
+  /** Map of language codes to manually created transcripts */
+  public readonly manuallyCreatedTranscripts: Map<string, Transcript>;
+
+  /** Map of language codes to automatically generated transcripts */
+  public readonly generatedTranscripts: Map<string, Transcript>;
+
+  /** List of languages available for translation */
+  public readonly translationLanguages: TranslationLanguage[];
+
+  constructor(
+    videoId: string,
+    manuallyCreatedTranscripts: Map<string, Transcript>,
+    generatedTranscripts: Map<string, Transcript>,
+    translationLanguages: TranslationLanguage[]
+  ) {
+    this.videoId = videoId;
+    this.manuallyCreatedTranscripts = manuallyCreatedTranscripts;
+    this.generatedTranscripts = generatedTranscripts;
+    this.translationLanguages = translationLanguages;
+  }
+
+  /**
+   * Creates a TranscriptList from YouTube's caption JSON data.
+   * 
+   * @param videoId The YouTube video ID
+   * @param captionData JSON data extracted from YouTube's page containing caption information
+   * @returns A transcript list
+   */
+  static build(videoId: string, captionData: any): TranscriptList {
+    // Extract translation languages
+    const translationLanguages: TranslationLanguage[] = [];
+    if (captionData.translationLanguages && Array.isArray(captionData.translationLanguages)) {
+      for (const lang of captionData.translationLanguages) {
+        const languageName = lang.languageName?.simpleText;
+        const languageCode = lang.languageCode;
+        
+        if (languageName && languageCode) {
+          translationLanguages.push({
+            language: languageName,
+            languageCode: languageCode,
+          });
+        }
+      }
+    }
+
+    // Extract transcripts
+    const manuallyCreatedTranscripts = new Map<string, Transcript>();
+    const generatedTranscripts = new Map<string, Transcript>();
+
+    if (captionData.captionTracks && Array.isArray(captionData.captionTracks)) {
+      for (const caption of captionData.captionTracks) {
+        const isAsr = caption.kind === 'asr';
+        const languageCode = caption.languageCode;
+        const baseUrl = caption.baseUrl;
+        const name = caption.name?.simpleText;
+        const isTranslatable = caption.isTranslatable || false;
+
+        if (!languageCode || !baseUrl || !name) {
+          continue;
+        }
+
+        const tl = isTranslatable ? translationLanguages : [];
+
+        const transcript = new Transcript(
+          videoId,
+          baseUrl,
+          name,
+          languageCode,
+          isAsr,
+          tl
+        );
+
+        if (isAsr) {
+          generatedTranscripts.set(languageCode, transcript);
+        } else {
+          manuallyCreatedTranscripts.set(languageCode, transcript);
+        }
+      }
+    }
+
+    return new TranscriptList(
+      videoId,
+      manuallyCreatedTranscripts,
+      generatedTranscripts,
+      translationLanguages
+    );
+  }
+
+  /**
+   * Finds a transcript in the specified languages, prioritizing manually created transcripts.
+   * 
+   * @param languageCodes Array of language codes in order of preference
+   * @returns The first available transcript
+   */
+  findTranscript(languageCodes: string[]): Transcript {
+    return this.findTranscriptInMaps(languageCodes, [
+      this.manuallyCreatedTranscripts,
+      this.generatedTranscripts,
+    ]);
+  }
+
+  /**
+   * Finds a manually created transcript in the specified languages.
+   * 
+   * @param languageCodes Array of language codes in order of preference
+   * @returns The first available manually created transcript
+   */
+  findManuallyCreatedTranscript(languageCodes: string[]): Transcript {
+    return this.findTranscriptInMaps(languageCodes, [this.manuallyCreatedTranscripts]);
+  }
+
+  /**
+   * Finds an automatically generated transcript in the specified languages.
+   * 
+   * @param languageCodes Array of language codes in order of preference
+   * @returns The first available automatically generated transcript
+   */
+  findGeneratedTranscript(languageCodes: string[]): Transcript {
+    return this.findTranscriptInMaps(languageCodes, [this.generatedTranscripts]);
+  }
+
+  /**
+   * Helper method to find transcripts in the provided maps.
+   */
+  private findTranscriptInMaps(
+    languageCodes: string[],
+    transcriptMaps: Map<string, Transcript>[]
+  ): Transcript {
+    for (const languageCode of languageCodes) {
+      for (const transcriptMap of transcriptMaps) {
+        const transcript = transcriptMap.get(languageCode);
+        if (transcript) {
+          return transcript;
+        }
+      }
+    }
+
+    throw CouldNotRetrieveTranscript.noTranscriptFound(this.videoId, languageCodes, this);
+  }
+
+  /**
+   * Returns an iterator over all available transcripts.
+   */
+  transcripts(): Transcript[] {
+    const allTranscripts: Transcript[] = [];
+    
+    // Add manually created transcripts first
+    for (const transcript of this.manuallyCreatedTranscripts.values()) {
+      allTranscripts.push(transcript);
+    }
+    
+    // Then add generated transcripts
+    for (const transcript of this.generatedTranscripts.values()) {
+      allTranscripts.push(transcript);
+    }
+    
+    return allTranscripts;
+  }
+
+  /**
+   * Returns a string representation of the transcript list.
+   */
+  toString(): string {
+    const transcripts = this.transcripts();
+    
+    if (transcripts.length === 0) {
+      return `No transcripts available for video ${this.videoId}`;
+    }
+
+    const lines = [`Available transcripts for video ${this.videoId}:`];
+    
+    // Group by type
+    const manual = transcripts.filter(t => !t.isGenerated);
+    const generated = transcripts.filter(t => t.isGenerated);
+    
+    if (manual.length > 0) {
+      lines.push('');
+      lines.push('Manually created:');
+      for (const transcript of manual) {
+        lines.push(` - ${transcript.toString()}`);
+      }
+    }
+    
+    if (generated.length > 0) {
+      lines.push('');
+      lines.push('Auto-generated:');
+      for (const transcript of generated) {
+        lines.push(` - ${transcript.toString()}`);
+      }
+    }
+    
+    return lines.join('\n');
+  }
+
+  /**
+   * Implements iterator interface for the transcript list.
+   */
+  *[Symbol.iterator](): Iterator<Transcript> {
+    for (const transcript of this.transcripts()) {
+      yield transcript;
+    }
+  }
+
+  /**
+   * Converts the transcript list to JSON format.
+   */
+  toJSON(): any {
+    return {
+      videoId: this.videoId,
+      manuallyCreatedTranscripts: Object.fromEntries(
+        Array.from(this.manuallyCreatedTranscripts.entries()).map(([key, value]) => [key, value.toJSON()])
+      ),
+      generatedTranscripts: Object.fromEntries(
+        Array.from(this.generatedTranscripts.entries()).map(([key, value]) => [key, value.toJSON()])
+      ),
+      translationLanguages: this.translationLanguages,
+    };
+  }
+
+  /**
+   * Creates a TranscriptList from JSON data.
+   */
+  static fromJSON(data: any): TranscriptList {
+    const manuallyCreatedTranscripts = new Map<string, Transcript>();
+    const generatedTranscripts = new Map<string, Transcript>();
+
+    if (data.manuallyCreatedTranscripts) {
+      for (const [key, value] of Object.entries(data.manuallyCreatedTranscripts)) {
+        manuallyCreatedTranscripts.set(key, Transcript.fromJSON(value));
+      }
+    }
+
+    if (data.generatedTranscripts) {
+      for (const [key, value] of Object.entries(data.generatedTranscripts)) {
+        generatedTranscripts.set(key, Transcript.fromJSON(value));
+      }
+    }
+
+    return new TranscriptList(
+      data.videoId || '',
+      manuallyCreatedTranscripts,
+      generatedTranscripts,
+      data.translationLanguages || []
+    );
+  }
+} 
