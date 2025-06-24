@@ -29,6 +29,28 @@ export class CookieError extends Error {
 }
 
 /**
+ * Error thrown when a PO token is required for transcript access.
+ * This is a new requirement by YouTube that indicates enhanced security measures.
+ */
+export class PoTokenRequired extends Error {
+  public readonly videoId: string;
+
+  constructor(videoId: string) {
+    super();
+    this.videoId = videoId;
+    this.name = 'PoTokenRequired';
+    this.message = this.buildErrorMessage();
+  }
+
+  private buildErrorMessage(): string {
+    return `A PO token is required to access transcripts for video ${this.videoId}. ` +
+           'This is a new requirement by YouTube that is not yet supported by this library. ' +
+           'Please report this issue at https://github.com/akinsella/yt-transcript-ts/issues ' +
+           'so we can implement support for PO tokens.';
+  }
+}
+
+/**
  * Detailed reasons why a transcript couldn't be retrieved.
  */
 export enum CouldNotRetrieveTranscriptReason {
@@ -45,6 +67,7 @@ export enum CouldNotRetrieveTranscriptReason {
   InvalidVideoId = 'INVALID_VIDEO_ID',
   AgeRestricted = 'AGE_RESTRICTED',
   YouTubeDataUnparsable = 'YOUTUBE_DATA_UNPARSABLE',
+  PoTokenRequired = 'PO_TOKEN_REQUIRED',
 }
 
 /**
@@ -160,6 +183,10 @@ Request blocked.`;
         cause = 'The YouTube data structure could not be parsed';
         break;
 
+      case CouldNotRetrieveTranscriptReason.PoTokenRequired:
+        cause = 'A PO token is required to access transcripts for this video. This is a new requirement by YouTube that is not yet supported by this library.';
+        break;
+
       default:
         cause = 'Unknown error';
         break;
@@ -234,6 +261,10 @@ Request blocked.`;
 
   static youTubeDataUnparsable(videoId: string): CouldNotRetrieveTranscript {
     return new CouldNotRetrieveTranscript(videoId, CouldNotRetrieveTranscriptReason.YouTubeDataUnparsable);
+  }
+
+  static poTokenRequired(videoId: string): CouldNotRetrieveTranscript {
+    return new CouldNotRetrieveTranscript(videoId, CouldNotRetrieveTranscriptReason.PoTokenRequired);
   }
 }
 

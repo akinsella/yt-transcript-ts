@@ -6,6 +6,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+**🚀 Version 0.2.0 - Now with InnerTube API!**  
+This version includes a complete rewrite to use YouTube's InnerTube API, making transcript fetching reliable and future-proof. No code changes required for existing users!
+
 This project is heavily inspired by the Python module [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api) originally developed by [Jonas Depoix](https://github.com/jdepoix) and the Rust port [yt-transcript-rs](https://github.com/akinsella/yt-transcript-rs) by [Alexis Kinsella](https://github.com/akinsella).
 
 ## Table of Contents
@@ -34,6 +37,8 @@ This project is heavily inspired by the Python module [youtube-transcript-api](h
 
 ## Features
 
+- **🔥 InnerTube API Integration**: Uses YouTube's internal API for reliable transcript fetching
+- **🚀 Future-Proof**: No more broken transcripts due to YouTube changes
 - Fetch transcripts from YouTube videos in various languages
 - List all available transcripts for a video
 - Retrieve translations of transcripts
@@ -44,6 +49,7 @@ This project is heavily inspired by the Python module [youtube-transcript-api](h
 - Support for custom HTTP client configuration and cookie authentication
 - Customizable HTML processing with configurable link formatting
 - Robust HTML entity handling and whitespace preservation
+- Enhanced error handling with specific error types including PO Token requirements
 - Full TypeScript support with comprehensive type definitions
 
 ## Installation
@@ -509,7 +515,7 @@ async function main() {
     const customClient = axios.create({
       timeout: 30000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36'
       },
       // Add proxy configuration if needed
       // proxy: {

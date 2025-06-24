@@ -3,8 +3,7 @@ import { FetchedTranscript } from './fetched-transcript';
 import { TranscriptList } from './transcript-list';
 import { VideoDetails, MicroformatData, StreamingData, VideoInfos } from './models';
 import { CouldNotRetrieveTranscript } from './errors';
-import { YoutubePageFetcher } from './youtube-page-fetcher';
-import { JsVarParser } from './js-var-parser';
+import { InnerTubeClient, InnerTubeConfig } from './innertube-client';
 import { CaptionsExtractor } from './captions-extractor';
 
 /**
@@ -19,6 +18,8 @@ export interface YouTubeTranscriptApiConfig {
   timeout?: number;
   /** Custom user agent string */
   userAgent?: string;
+  /** InnerTube client configuration */
+  innerTubeConfig?: Partial<InnerTubeConfig>;
 }
 
 /**
@@ -28,8 +29,8 @@ export class YouTubeTranscriptApi {
   /** HTTP client used for making requests */
   private readonly client: AxiosInstance;
   
-  /** YouTube page fetcher for retrieving video pages */
-  private readonly pageFetcher: YoutubePageFetcher;
+  /** InnerTube client for accessing YouTube's internal API */
+  private readonly innerTubeClient: InnerTubeClient;
 
   /**
    * Creates a new YouTube Transcript API instance.
@@ -40,8 +41,8 @@ export class YouTubeTranscriptApi {
     // Create HTTP client
     this.client = config.httpClient || this.createDefaultClient(config);
     
-    // Create page fetcher
-    this.pageFetcher = new YoutubePageFetcher(this.client);
+    // Create InnerTube client
+    this.innerTubeClient = new InnerTubeClient(this.client, config.innerTubeConfig);
   }
 
   /**
@@ -52,7 +53,7 @@ export class YouTubeTranscriptApi {
       timeout: config.timeout || 30000,
       headers: {
         'User-Agent': config.userAgent || 
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
         'Accept-Language': 'en-US',
       },
     });
@@ -92,15 +93,18 @@ export class YouTubeTranscriptApi {
    * @returns A list of available transcripts
    */
   async listTranscripts(videoId: string): Promise<TranscriptList> {
-    // Fetch the YouTube video page
-    const html = await this.pageFetcher.fetchVideoPage(videoId);
+    // Fetch video information using InnerTube API
+    const innerTubeResponse = await this.innerTubeClient.fetchVideoInfo(videoId);
     
-    // Extract player response data
-    const playerResponseParser = new JsVarParser('ytInitialPlayerResponse');
-    const playerResponse = playerResponseParser.parse(html, videoId);
+    // Extract caption tracks from the response
+    const captionTracks = this.innerTubeClient.extractCaptionTracks(innerTubeResponse);
+    const translationLanguages = this.innerTubeClient.extractTranslationLanguages(innerTubeResponse);
     
-    // Extract captions data
-    const captionsData = CaptionsExtractor.extractCaptionsData(playerResponse, videoId);
+    // Build captions data structure
+    const captionsData = {
+      captionTracks,
+      translationLanguages,
+    };
     
     // Build and return transcript list
     return TranscriptList.build(videoId, captionsData);
@@ -146,24 +150,25 @@ export class YouTubeTranscriptApi {
    * @returns Complete video information
    */
   async fetchVideoInfos(videoId: string): Promise<VideoInfos> {
-    // Fetch the YouTube video page
-    const html = await this.pageFetcher.fetchVideoPage(videoId);
-    
-    // Extract player response data
-    const playerResponseParser = new JsVarParser('ytInitialPlayerResponse');
-    const playerResponse = playerResponseParser.parse(html, videoId);
+    // Fetch video information using InnerTube API
+    const innerTubeResponse = await this.innerTubeClient.fetchVideoInfo(videoId);
     
     // Extract video details
-    const videoDetails = this.extractVideoDetails(playerResponse, videoId);
+    const videoDetails = this.extractVideoDetails(innerTubeResponse, videoId);
     
     // Extract microformat data
-    const microformat = this.extractMicroformatData(playerResponse, videoId);
+    const microformat = this.extractMicroformatData(innerTubeResponse, videoId);
     
     // Extract streaming data
-    const streamingData = this.extractStreamingData(playerResponse, videoId);
+    const streamingData = this.extractStreamingData(innerTubeResponse, videoId);
     
     // Extract transcript list
-    const captionsData = CaptionsExtractor.extractCaptionsData(playerResponse, videoId);
+    const captionTracks = this.innerTubeClient.extractCaptionTracks(innerTubeResponse);
+    const translationLanguages = this.innerTubeClient.extractTranslationLanguages(innerTubeResponse);
+    const captionsData = {
+      captionTracks,
+      translationLanguages,
+    };
     const transcriptList = TranscriptList.build(videoId, captionsData);
     
     return {
@@ -175,10 +180,10 @@ export class YouTubeTranscriptApi {
   }
 
   /**
-   * Extracts video details from player response.
+   * Extracts video details from InnerTube response.
    */
-  private extractVideoDetails(playerResponse: any, videoId: string): VideoDetails {
-    const details = playerResponse?.videoDetails;
+  private extractVideoDetails(innerTubeResponse: any, videoId: string): VideoDetails {
+    const details = innerTubeResponse?.videoDetails;
     if (!details) {
       throw CouldNotRetrieveTranscript.youTubeDataUnparsable(videoId);
     }
@@ -198,10 +203,10 @@ export class YouTubeTranscriptApi {
   }
 
   /**
-   * Extracts microformat data from player response.
+   * Extracts microformat data from InnerTube response.
    */
-  private extractMicroformatData(playerResponse: any, videoId: string): MicroformatData {
-    const microformat = playerResponse?.microformat?.playerMicroformatRenderer;
+  private extractMicroformatData(innerTubeResponse: any, videoId: string): MicroformatData {
+    const microformat = innerTubeResponse?.microformat?.playerMicroformatRenderer;
     if (!microformat) {
       return {}; // Microformat is optional
     }
@@ -230,10 +235,10 @@ export class YouTubeTranscriptApi {
   }
 
   /**
-   * Extracts streaming data from player response.
+   * Extracts streaming data from InnerTube response.
    */
-  private extractStreamingData(playerResponse: any, videoId: string): StreamingData {
-    const streamingData = playerResponse?.streamingData;
+  private extractStreamingData(innerTubeResponse: any, videoId: string): StreamingData {
+    const streamingData = innerTubeResponse?.streamingData;
     if (!streamingData) {
       throw CouldNotRetrieveTranscript.youTubeDataUnparsable(videoId);
     }

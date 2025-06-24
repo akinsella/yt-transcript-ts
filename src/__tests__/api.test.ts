@@ -128,26 +128,26 @@ describe("YouTubeTranscriptApi", () => {
 
   describe("fetchTranscript", () => {
     const videoId = "dQw4w9WgXcQ";
-    const mockHtml = `
-      <html>
-        <script>
-          var ytInitialPlayerResponse = {
-            "captions": {
-              "playerCaptionsTracklistRenderer": {
-                "captionTracks": [
-                  {
-                    "baseUrl": "https://example.com/transcript",
-                    "name": {"simpleText": "English"},
-                    "languageCode": "en",
-                    "isTranslatable": false
-                  }
-                ]
-              }
+    const mockInnerTubeResponse = {
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [
+            {
+              baseUrl: "https://example.com/transcript",
+              name: {
+                simpleText: "English"
+              },
+              languageCode: "en",
+              vssId: "en",
+              isTranslatable: false
             }
-          };
-        </script>
-      </html>
-    `;
+          ]
+        }
+      },
+      playabilityStatus: {
+        status: "OK"
+      }
+    };
 
     const mockTranscriptXml = `
       <transcript>
@@ -157,10 +157,10 @@ describe("YouTubeTranscriptApi", () => {
     `;
 
     it("should fetch transcript successfully", async () => {
-      // Mock the YouTube page request
-      mockedAxios.get.mockResolvedValueOnce({
+      // Mock the InnerTube API request
+      mockedAxios.post.mockResolvedValueOnce({
         status: 200,
-        data: mockHtml,
+        data: mockInnerTubeResponse,
       });
 
       // Mock the transcript XML request
@@ -180,7 +180,7 @@ describe("YouTubeTranscriptApi", () => {
     });
 
     it("should handle HTTP errors", async () => {
-      mockedAxios.get.mockRejectedValueOnce({
+      mockedAxios.post.mockRejectedValueOnce({
         response: { status: 404 },
         isAxiosError: true,
       });
@@ -191,7 +191,7 @@ describe("YouTubeTranscriptApi", () => {
     });
 
     it("should handle network errors", async () => {
-      mockedAxios.get.mockRejectedValueOnce(new Error("Network error"));
+      mockedAxios.post.mockRejectedValueOnce(new Error("Network error"));
 
       await expect(api.fetchTranscript(videoId, ["en"])).rejects.toThrow(
         CouldNotRetrieveTranscript,
@@ -201,44 +201,48 @@ describe("YouTubeTranscriptApi", () => {
 
   describe("listTranscripts", () => {
     const videoId = "dQw4w9WgXcQ";
-    const mockHtml = `
-      <html>
-        <script>
-          var ytInitialPlayerResponse = {
-            "captions": {
-              "playerCaptionsTracklistRenderer": {
-                "captionTracks": [
-                  {
-                    "baseUrl": "https://example.com/transcript/en",
-                    "name": {"simpleText": "English"},
-                    "languageCode": "en",
-                    "isTranslatable": true
-                  },
-                  {
-                    "baseUrl": "https://example.com/transcript/fr",
-                    "name": {"simpleText": "French"},
-                    "languageCode": "fr",
-                    "kind": "asr",
-                    "isTranslatable": true
-                  }
-                ],
-                "translationLanguages": [
-                  {
-                    "languageCode": "es",
-                    "languageName": {"simpleText": "Spanish"}
-                  }
-                ]
+    const mockInnerTubeResponse = {
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [
+            {
+              baseUrl: "https://example.com/transcript/en",
+              name: {
+                simpleText: "English"
+              },
+              languageCode: "en",
+              vssId: "en",
+              isTranslatable: true
+            },
+            {
+              baseUrl: "https://example.com/transcript/fr",
+              name: {
+                simpleText: "French"
+              },
+              languageCode: "fr",
+              vssId: "a.fr",
+              isTranslatable: true
+            }
+          ],
+          translationLanguages: [
+            {
+              languageCode: "es",
+              languageName: {
+                simpleText: "Spanish"
               }
             }
-          };
-        </script>
-      </html>
-    `;
+          ]
+        }
+      },
+      playabilityStatus: {
+        status: "OK"
+      }
+    };
 
     it("should list available transcripts", async () => {
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedAxios.post.mockResolvedValueOnce({
         status: 200,
-        data: mockHtml,
+        data: mockInnerTubeResponse,
       });
 
       const transcriptList = await api.listTranscripts(videoId);
@@ -254,24 +258,19 @@ describe("YouTubeTranscriptApi", () => {
     });
 
     it("should handle missing captions", async () => {
-      const htmlWithoutCaptions = `
-        <html>
-          <script>
-            var ytInitialPlayerResponse = {
-              "videoDetails": {"videoId": "${videoId}"}
-            };
-          </script>
-        </html>
-      `;
+      const responseWithoutCaptions = {
+        playabilityStatus: {
+          status: "OK"
+        }
+      };
 
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedAxios.post.mockResolvedValueOnce({
         status: 200,
-        data: htmlWithoutCaptions,
+        data: responseWithoutCaptions,
       });
 
-      await expect(api.listTranscripts(videoId)).rejects.toThrow(
-        CouldNotRetrieveTranscript,
-      );
+      const transcriptList = await api.listTranscripts(videoId);
+      expect(transcriptList.transcripts()).toHaveLength(0);
     });
 
     it("should handle 403 errors as IP blocked", async () => {
@@ -285,7 +284,7 @@ describe("YouTubeTranscriptApi", () => {
       // Mock axios.isAxiosError to return true for our mock error
       mockIsAxiosError.mockReturnValue(true);
 
-      mockedAxios.get.mockRejectedValueOnce(axiosError);
+      mockedAxios.post.mockRejectedValueOnce(axiosError);
 
       await expect(api.listTranscripts(videoId)).rejects.toThrow(
         expect.objectContaining({
@@ -305,7 +304,7 @@ describe("YouTubeTranscriptApi", () => {
       // Mock axios.isAxiosError to return true for our mock error
       mockIsAxiosError.mockReturnValue(true);
 
-      mockedAxios.get.mockRejectedValueOnce(axiosError);
+      mockedAxios.post.mockRejectedValueOnce(axiosError);
 
       await expect(api.listTranscripts(videoId)).rejects.toThrow(
         expect.objectContaining({
@@ -317,42 +316,39 @@ describe("YouTubeTranscriptApi", () => {
 
   describe("fetchVideoDetails", () => {
     const videoId = "dQw4w9WgXcQ";
-    const mockHtml = `
-      <html>
-        <script>
-          var ytInitialPlayerResponse = {
-            "videoDetails": {
-              "videoId": "${videoId}",
-              "title": "Test Video",
-              "lengthSeconds": "212",
-              "author": "Test Channel",
-              "viewCount": "1000000",
-              "channelId": "UC123456789",
-              "shortDescription": "A test video",
-              "thumbnail": {
-                "thumbnails": [
-                  {"url": "https://example.com/thumb.jpg", "width": 120, "height": 90}
-                ]
-              },
-              "isLiveContent": false
-            },
-            "captions": {
-              "playerCaptionsTracklistRenderer": {}
-            },
-            "streamingData": {
-              "expiresInSeconds": "21600",
-              "formats": [],
-              "adaptiveFormats": []
-            }
-          };
-        </script>
-      </html>
-    `;
+    const mockInnerTubeResponse = {
+      videoDetails: {
+        videoId: videoId,
+        title: "Test Video",
+        lengthSeconds: "212",
+        author: "Test Channel",
+        viewCount: "1000000",
+        channelId: "UC123456789",
+        shortDescription: "A test video",
+        thumbnail: {
+          thumbnails: [
+            {url: "https://example.com/thumb.jpg", width: 120, height: 90}
+          ]
+        },
+        isLiveContent: false
+      },
+      captions: {
+        playerCaptionsTracklistRenderer: {}
+      },
+      streamingData: {
+        expiresInSeconds: "21600",
+        formats: [],
+        adaptiveFormats: []
+      },
+      playabilityStatus: {
+        status: "OK"
+      }
+    };
 
     it("should fetch video details", async () => {
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedAxios.post.mockResolvedValueOnce({
         status: 200,
-        data: mockHtml,
+        data: mockInnerTubeResponse,
       });
 
       const details = await api.fetchVideoDetails(videoId);
@@ -369,17 +365,15 @@ describe("YouTubeTranscriptApi", () => {
     });
 
     it("should handle missing video details", async () => {
-      const htmlWithoutDetails = `
-        <html>
-          <script>
-            var ytInitialPlayerResponse = {};
-          </script>
-        </html>
-      `;
+      const responseWithoutDetails = {
+        playabilityStatus: {
+          status: "OK"
+        }
+      };
 
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedAxios.post.mockResolvedValueOnce({
         status: 200,
-        data: htmlWithoutDetails,
+        data: responseWithoutDetails,
       });
 
       await expect(api.fetchVideoDetails(videoId)).rejects.toThrow(
@@ -390,46 +384,43 @@ describe("YouTubeTranscriptApi", () => {
 
   describe("fetchVideoInfos", () => {
     const videoId = "dQw4w9WgXcQ";
-    const mockHtml = `
-      <html>
-        <script>
-          var ytInitialPlayerResponse = {
-            "videoDetails": {
-              "videoId": "${videoId}",
-              "title": "Test Video",
-              "lengthSeconds": "212",
-              "author": "Test Channel",
-              "viewCount": "1000000",
-              "channelId": "UC123456789",
-              "shortDescription": "A test video",
-              "thumbnail": {"thumbnails": []},
-              "isLiveContent": false
-            },
-            "microformat": {
-              "playerMicroformatRenderer": {
-                "title": {"simpleText": "Test Video"},
-                "description": {"simpleText": "Test description"}
-              }
-            },
-            "streamingData": {
-              "expiresInSeconds": "21600",
-              "formats": [],
-              "adaptiveFormats": []
-            },
-            "captions": {
-              "playerCaptionsTracklistRenderer": {
-                "captionTracks": []
-              }
-            }
-          };
-        </script>
-      </html>
-    `;
+    const mockInnerTubeResponse = {
+      videoDetails: {
+        videoId: videoId,
+        title: "Test Video",
+        lengthSeconds: "212",
+        author: "Test Channel",
+        viewCount: "1000000",
+        channelId: "UC123456789",
+        shortDescription: "A test video",
+        thumbnail: {thumbnails: []},
+        isLiveContent: false
+      },
+      microformat: {
+        playerMicroformatRenderer: {
+          title: {simpleText: "Test Video"},
+          description: {simpleText: "Test description"}
+        }
+      },
+      streamingData: {
+        expiresInSeconds: "21600",
+        formats: [],
+        adaptiveFormats: []
+      },
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: []
+        }
+      },
+      playabilityStatus: {
+        status: "OK"
+      }
+    };
 
     it("should fetch complete video information", async () => {
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedAxios.post.mockResolvedValueOnce({
         status: 200,
-        data: mockHtml,
+        data: mockInnerTubeResponse,
       });
 
       const videoInfos = await api.fetchVideoInfos(videoId);
@@ -442,59 +433,55 @@ describe("YouTubeTranscriptApi", () => {
     });
   });
 
-  describe("consent cookie handling", () => {
+  describe("playability status handling", () => {
     const videoId = "dQw4w9WgXcQ";
-    const consentHtml = `
-      <html>
-        <form action="https://consent.youtube.com/s">
-          <input type="hidden" name="continue" value="https://www.youtube.com/">
-          <input type="hidden" name="gl" value="US">
-        </form>
-      </html>
-    `;
 
-    const normalHtml = `
-      <html>
-        <script>
-          var ytInitialPlayerResponse = {
-            "captions": {
-              "playerCaptionsTracklistRenderer": {}
+    it("should handle UNPLAYABLE status", async () => {
+      const unplayableResponse = {
+        playabilityStatus: {
+          status: "UNPLAYABLE",
+          reason: "Video is private",
+          errorScreen: {
+            playerErrorMessageRenderer: {
+              reason: {
+                simpleText: "This video is private"
+              },
+              subreason: {
+                simpleText: "Contact the owner to request access"
+              }
             }
-          };
-        </script>
-      </html>
-    `;
+          }
+        }
+      };
 
-    it("should handle consent cookie creation", async () => {
-      // First request returns consent form
-      mockedAxios.get.mockResolvedValueOnce({
-        status: 200,
-        data: consentHtml,
-      });
-
-      // POST to consent endpoint
       mockedAxios.post.mockResolvedValueOnce({
         status: 200,
-        data: "OK",
+        data: unplayableResponse,
       });
 
-      // Second request returns normal page
-      mockedAxios.get.mockResolvedValueOnce({
-        status: 200,
-        data: normalHtml,
-      });
-
-      const transcriptList = await api.listTranscripts(videoId);
-      expect(transcriptList).toBeDefined();
-
-      // Verify consent form was submitted
-      expect(mockedAxios.post).toHaveBeenCalledWith(
-        "https://consent.youtube.com/s",
-        expect.any(URLSearchParams),
+      await expect(api.listTranscripts(videoId)).rejects.toThrow(
         expect.objectContaining({
-          headers: expect.objectContaining({
-            "Content-Type": "application/x-www-form-urlencoded",
-          }),
+          reason: CouldNotRetrieveTranscriptReason.VideoUnplayable,
+        }),
+      );
+    });
+
+    it("should handle LOGIN_REQUIRED status", async () => {
+      const loginRequiredResponse = {
+        playabilityStatus: {
+          status: "LOGIN_REQUIRED",
+          reason: "This video is age-restricted"
+        }
+      };
+
+      mockedAxios.post.mockResolvedValueOnce({
+        status: 200,
+        data: loginRequiredResponse,
+      });
+
+      await expect(api.listTranscripts(videoId)).rejects.toThrow(
+        expect.objectContaining({
+          reason: CouldNotRetrieveTranscriptReason.AgeRestricted,
         }),
       );
     });
@@ -504,7 +491,7 @@ describe("YouTubeTranscriptApi", () => {
     const videoId = "dQw4w9WgXcQ";
 
     it("should handle other HTTP errors", async () => {
-      mockedAxios.get.mockRejectedValueOnce({
+      mockedAxios.post.mockRejectedValueOnce({
         response: { status: 500 },
         isAxiosError: true,
         message: "Internal Server Error",
@@ -517,21 +504,20 @@ describe("YouTubeTranscriptApi", () => {
       );
     });
 
-    it("should handle unparsable YouTube data", async () => {
-      const invalidHtml = `
-        <html>
-          <script>
-            var ytInitialPlayerResponse = "not valid json";
-          </script>
-        </html>
-      `;
+    it("should handle missing video details as unparsable data", async () => {
+      const responseWithoutVideoDetails = {
+        playabilityStatus: {
+          status: "OK"
+        }
+        // Missing videoDetails
+      };
 
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedAxios.post.mockResolvedValueOnce({
         status: 200,
-        data: invalidHtml,
+        data: responseWithoutVideoDetails,
       });
 
-      await expect(api.listTranscripts(videoId)).rejects.toThrow(
+      await expect(api.fetchVideoDetails(videoId)).rejects.toThrow(
         expect.objectContaining({
           reason: CouldNotRetrieveTranscriptReason.YouTubeDataUnparsable,
         }),

@@ -26,6 +26,7 @@ export {
 export {
   YouTubeTranscriptApiError,
   CookieError,
+  PoTokenRequired,
   CouldNotRetrieveTranscript,
   CouldNotRetrieveTranscriptReason,
   CouldNotRetrieveTranscriptReasonData,
@@ -47,6 +48,7 @@ export {
 
 // Utility classes (for advanced usage)
 export { TranscriptParser } from './transcript-parser';
+export { InnerTubeClient, InnerTubeConfig, InnerTubeResponse } from './innertube-client';
 export { YoutubePageFetcher } from './youtube-page-fetcher';
 export { JsVarParser } from './js-var-parser';
 export { CaptionsExtractor } from './captions-extractor'; 

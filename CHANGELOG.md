@@ -4,6 +4,53 @@ All notable changes to the `yt-transcript-ts` project will be documented in this
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.0] - 2025-01-27
+
+### Breaking Changes
+- **Complete API Overhaul**: Replaced the legacy transcript fetching method with YouTube's InnerTube API
+- **Removed Legacy URL Approach**: The old method of using direct transcript URLs has been completely removed as it no longer works due to YouTube's permanent API changes
+
+### Added
+- **InnerTube API Integration**: Added `InnerTubeClient` to use YouTube's internal API exclusively for transcript fetching
+- **Enhanced Error Handling**: Added `PoTokenRequired` error for YouTube's new security requirements
+- **Improved Reliability**: Transcript fetching is now consistently reliable since it uses YouTube's internal API
+- New error type: `PoTokenRequired` for handling YouTube's new authentication requirements
+
+### Changed
+- **Major Architecture Change**: All API methods now use InnerTube API exclusively instead of legacy HTML scraping
+- **Improved Reliability**: Transcript fetching is now consistently reliable since it uses YouTube's internal API
+- Enhanced error messages with detailed explanations when YouTube API issues occur
+- Updated `TranscriptList.build()` method to handle InnerTube API response format
+- Modified caption track detection logic to work with InnerTube's `vssId` field
+
+### Fixed
+- **Critical Fix**: YouTube transcript fetching now works reliably after YouTube's permanent API changes
+- Fixed empty transcript responses by completely replacing the broken legacy approach
+- Fixed transcript availability detection using InnerTube API's more reliable data structure
+
+### Technical Details
+- The library now exclusively uses YouTube's InnerTube API:
+  1. Calls InnerTube API to get current transcript URLs and video data
+  2. Extracts caption tracks from the InnerTube response
+  3. Finds matching transcript URLs for the requested language
+  4. Fetches transcript content using the current, authenticated URLs
+- This approach completely bypasses YouTube's broken external API while maintaining full backward compatibility for user code
+- Added proper handling for YouTube's new `PoToken` requirement (when encountered, provides helpful error message)
+- Updated client version and user agent to match current YouTube expectations
+
+### Migration Guide
+1. **No code changes required** - your existing code will continue to work unchanged
+2. **Remove any workarounds**: You can remove any special configuration like:
+   - Custom headers or user agents (unless needed for other reasons)
+   - Session establishment code
+   - Workarounds for empty transcripts
+3. **Your existing code will work unchanged** - no code modifications required
+
+### Legacy Information (Historical)
+*This section is kept for historical reference only. These solutions are no longer needed with v0.2.0+.*
+
+The empty transcript issue affected versions prior to v0.2.0 when YouTube changed their external API. The previous solutions involved complex workarounds, but these are no longer necessary.
+
 ## [0.1.0] - 2025-05-27
 
 ### Added
